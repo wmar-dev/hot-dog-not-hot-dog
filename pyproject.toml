@@ -1,0 +1,14 @@
+[project]
+name = "hot-dog-not-hot-dog"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "clip>=0.2.0",
+    "dotenv>=0.9.9",
+    "jupyter>=1.1.1",
+    "matplotlib>=3.10.7",
+    "pandas>=2.3.3",
+    "torch>=2.9.1",
+]
