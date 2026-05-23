@@ -4,103 +4,52 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a machine learning project that classifies images as "hot dog" or "not hot dog" using OpenAI's CLIP (Contrastive Language-Image Pre-training) model. It leverages the Food-101 dataset (101,000 images across 101 food categories) to generate embeddings and perform classification via semantic similarity matching.
+This is a machine learning project that classifies images as "hot dog" or "not hot dog" using OpenAI's CLIP (Contrastive Language-Image Pre-training) model. It leverages the Food-101 dataset (101,000 images across 101 food categories) to generate embeddings and perform zero-shot classification via cosine similarity.
 
-The project is notebook-centric, with the main ML workflow in [hotdog.ipynb](hotdog.ipynb).
+The project is notebook-centric — the full ML pipeline lives in [hotdog.ipynb](hotdog.ipynb).
 
-## Common Development Commands
+## Commands
 
-**Setup and Dependencies:**
 ```bash
-uv sync              # Install dependencies from pyproject.toml
+uv sync                                  # Install dependencies
+uv run --with jupyter jupyter lab        # Launch Jupyter Lab (or: bash run.sh)
+uv run python hotdog.py                  # Extract Food-101 tarball and populate DB
+uv run python schema.py                  # Initialize the SQLite database
 ```
 
-**Running the ML Workflow:**
-```bash
-uv run --with jupyter jupyter lab    # Launch Jupyter Lab to work with hotdog.ipynb
-```
+## Architecture
 
-**Running Python Scripts:**
-```bash
-uv run python hotdog.py    # Extract Food-101 dataset and populate database
-uv run python main.py      # Run the main entry point
-uv run python schema.py    # Initialize or inspect database schema
-```
+### Pipeline (hotdog.ipynb)
 
-## Architecture Overview
+The notebook is the authoritative ML workflow and runs top-to-bottom:
 
-### Core Components
+1. **Setup** — loads CLIP `ViT-B/32`, calls `initial_setup()` to populate `embedding.db` from the Food-101 tarball, reads env vars (`DB`, `FOOD_TAR_PATH`)
+2. **Embedding generation** — encodes every image with CLIP's vision encoder; stores 512-float vectors as BLOBs in `embeddings.embedding`
+3. **Text features** — encodes all 101 human-readable food labels (`labels.txt`) with CLIP's text encoder
+4. **Prediction** — for each image embedding, picks the label whose text embedding has the highest cosine similarity; writes results to `predictions` table
+5. **Evaluation** — overall accuracy (~78%), per-class false-negative/false-positive breakdowns, binary confusion matrix (hot dog vs. not hot dog)
 
-1. **[hotdog.ipynb](hotdog.ipynb)** - Main workflow notebook
-   - Loads CLIP model (vision + text encoders)
-   - Generates embeddings for all Food-101 images
-   - Trains on embeddings using cosine similarity
-   - Performs predictions and evaluation
-   - Contains 25 code cells with complete ML pipeline
+### Supporting modules
 
-2. **[hotdog.py](hotdog.py)** - Data extraction utility
-   - Reads the Food-101 tarball (specified by `FOOD_TAR_PATH` env var)
-   - Extracts JPG files and metadata
-   - Populates SQLite database with image paths and labels
+- **[hotdog.py](hotdog.py)** — `initial_setup()`: opens the `.tar.gz`, extracts JPG paths, parses `id` and `label` from path structure (`food-101/images/<label>/<id>.jpg`), inserts rows into `embeddings` via `INSERT OR IGNORE`
+- **[schema.py](schema.py)** — `setup_db()`: creates `embeddings` (id, path, label, embedding BLOB) and `predictions` (id, predicted_label) tables idempotently
 
-3. **[schema.py](schema.py)** - Database schema
-   - Defines `embeddings` table: id, path, label, embedding (BLOB)
-   - Defines `predictions` table: id, predicted_label
-   - Initializes SQLite database
+### Database
 
-4. **[union_find.py](union_find.py)** - Utility data structure
-   - Union-Find (Disjoint Set Union) implementation
-   - Used for grouping similar images or clustering operations
+`embedding.db` (~416 MB, not in git) is the central store. Embeddings are stored as `struct.pack('512f', ...)` BLOBs and unpacked with `struct.unpack` on read. The `predictions` table is joined back to `embeddings` for evaluation.
 
-### Data Organization
+### Environment
 
-- **[classes.txt](classes.txt)** - 101 food class names (snake_case format)
-- **[labels.txt](labels.txt)** - 101 food class names (human-readable format)
-- **[train.txt](train.txt)** - Training split (75,750 samples), format: `category_name/image_id`
-- **[test.txt](test.txt)** - Test split (25,250 samples)
-- **[embedding.db](embedding.db)** - SQLite database (416 MB) storing embeddings and predictions
+`.env` file (excluded from git) must define:
 
-### Key Design Decisions
+- `FOOD_TAR_PATH` — path to the Food-101 `.tar.gz` download
+- `DB` — optional override for the database path (defaults to `embedding.db`)
 
-**Embedding-Based Classification:**
-- Uses pre-trained CLIP model to generate fixed-size image embeddings
-- Performs classification via cosine similarity (zero-shot learning approach)
-- Avoids training custom neural networks from scratch
+### Device detection
 
-**Persistent Storage:**
-- SQLite stores computed embeddings as BLOBs to avoid recomputation
-- Allows quick iteration on classification logic without regenerating embeddings
-
-**Environment Configuration:**
-- `FOOD_TAR_PATH` environment variable specifies the Food-101 dataset tarball location
-- Defined in `.env` file (excluded from git)
-
-**Device Agnostic:**
-- Automatically detects CUDA (NVIDIA GPU), Apple Metal (Apple Silicon), or falls back to CPU
-- CLIP models loaded with appropriate device specifications
-
-## Dependencies
-
-Core ML libraries specified in [pyproject.toml](pyproject.toml):
-- **torch** (>=2.9.1) - Deep learning framework
-- **clip** (>=0.2.0) - OpenAI's vision-language model
-- **pandas** (>=2.3.3) - Data manipulation
-- **matplotlib** (>=3.10.7) - Visualization
-- **jupyter** (>=1.1.1) - Interactive notebooks
-- **dotenv** (>=0.9.9) - Environment variable management
-
-Minimum Python version: **3.14+**
-
-## Testing and Evaluation
-
-The notebook contains evaluation cells that:
-- Compute accuracy on the test split
-- Calculate cosine similarity scores between images
-- Validate predictions against ground truth labels
-
-Run evaluation cells within [hotdog.ipynb](hotdog.ipynb) after training to assess model performance.
+The notebook auto-selects `cuda` → `mps` (Apple Silicon) → `cpu` for both the CLIP model and tensor operations.
 
 ## References
 
 - [The Food-101 Data Set](https://data.vision.ee.ethz.ch/cvl/datasets_extra/food-101/)
-- OpenAI CLIP: https://github.com/openai/CLIP
+- [OpenAI CLIP](https://github.com/openai/CLIP)
