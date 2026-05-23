@@ -1,5 +1,6 @@
 import os
 import tarfile
+import sqlite3
 
 from dotenv import load_dotenv
 from tqdm.auto import tqdm
@@ -8,6 +9,7 @@ import pandas as pd
 
 load_dotenv()
 FOOD_TAR_PATH = os.environ.get('FOOD_TAR_PATH')
+DB = os.environ.get('DB', 'embedding.db')
 
 
 def initial_setup():
