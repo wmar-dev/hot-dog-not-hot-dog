@@ -4,3 +4,5 @@ __pycache__
 .python-version
 uv.lock
 *.db
+*.db-wal
+*.db-shm

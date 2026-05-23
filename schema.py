@@ -6,19 +6,22 @@ DB = 'embedding.db'
 
 def setup_db():
     with sqlite3.connect(DB) as conn:
-        sql = '''
+        conn.execute('PRAGMA journal_mode=WAL')
+        conn.execute('''
         CREATE TABLE IF NOT EXISTS embeddings (
-            id INTEGER PRIMARY KEY,
+            id INTEGER NOT NULL,
+            model TEXT NOT NULL,
             path TEXT,
             label TEXT,
-            embedding BLOB
+            embedding BLOB,
+            PRIMARY KEY (id, model)
         )
-        '''
-        conn.execute(sql)
-        sql = '''
+        ''')
+        conn.execute('''
         CREATE TABLE IF NOT EXISTS predictions (
-            id INTEGER PRIMARY KEY,
-            predicted_label TEXT
+            id INTEGER NOT NULL,
+            model TEXT NOT NULL,
+            predicted_label TEXT,
+            PRIMARY KEY (id, model)
         )
-        '''
-        conn.execute(sql)        
+        ''')
