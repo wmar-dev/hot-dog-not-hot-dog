@@ -4,9 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a machine learning project that classifies images as "hot dog" or "not hot dog" using OpenAI's CLIP (Contrastive Language-Image Pre-training) model. It leverages the Food-101 dataset (101,000 images across 101 food categories) to generate embeddings and perform zero-shot classification via cosine similarity.
-
-The project is notebook-centric — the full ML pipeline lives in [hotdog.ipynb](hotdog.ipynb).
+This is a machine learning project that classifies images as "hot dog" or "not hot dog" using zero-shot classification via cosine similarity between image and text embeddings. It runs multiple vision-language models against the Food-101 dataset (101,000 images, 101 categories) and compares results.
 
 ## Commands
 
@@ -19,24 +17,30 @@ uv run python schema.py                  # Initialize the SQLite database
 
 ## Architecture
 
-### Pipeline (hotdog.ipynb)
+### Notebooks
 
-The notebook is the authoritative ML workflow and runs top-to-bottom:
+Each notebook runs the full pipeline for one model family, top-to-bottom:
 
-1. **Setup** — loads CLIP `ViT-B/32`, calls `initial_setup()` to populate `embedding.db` from the Food-101 tarball, reads env vars (`DB`, `FOOD_TAR_PATH`)
-2. **Embedding generation** — encodes every image with CLIP's vision encoder; stores 512-float vectors as BLOBs in `embeddings.embedding`
-3. **Text features** — encodes all 101 human-readable food labels (`labels.txt`) with CLIP's text encoder
-4. **Prediction** — for each image embedding, picks the label whose text embedding has the highest cosine similarity; writes results to `predictions` table
-5. **Evaluation** — overall accuracy (~78%), per-class false-negative/false-positive breakdowns, binary confusion matrix (hot dog vs. not hot dog)
+1. **Setup** — loads model, calls `initial_setup(model=MODEL_NAME)` to populate `embedding.db`, reads env vars
+2. **Embedding generation** — encodes every image; stores float vectors as BLOBs keyed by `(id, model)`
+3. **Text features** — encodes all 101 food labels from `labels.txt`
+4. **Prediction** — batch cosine similarity (image matrix × text matrix); writes to `predictions` table
+5. **Evaluation** — overall accuracy, per-class FN/FP breakdowns, binary confusion matrix
+
+| Notebook | Model | Notes |
+| --- | --- | --- |
+| [clip.ipynb](clip.ipynb) | CLIP `ViT-B/32` | 512-dim embeddings; bare label names |
+| [siglip.ipynb](siglip.ipynb) | `google/siglip-base-patch16-224` | 768-dim; bare label names work fine |
+| [siglip2.ipynb](siglip2.ipynb) | `google/siglip2-*` | 768/1024/1152-dim; **requires** `"a photo of a {label}"` prompt template — bare labels degrade accuracy from ~90% to ~47% |
 
 ### Supporting modules
 
-- **[hotdog.py](hotdog.py)** — `initial_setup()`: opens the `.tar.gz`, extracts JPG paths, parses `id` and `label` from path structure (`food-101/images/<label>/<id>.jpg`), inserts rows into `embeddings` via `INSERT OR IGNORE`
-- **[schema.py](schema.py)** — `setup_db()`: creates `embeddings` (id, path, label, embedding BLOB) and `predictions` (id, predicted_label) tables idempotently
+- **[hotdog.py](hotdog.py)** — `initial_setup(model)`: opens the `.tar.gz`, extracts JPG paths, parses `id` and `label` from path structure (`food-101/images/<label>/<id>.jpg`), inserts rows into `embeddings` via `INSERT OR IGNORE`
+- **[schema.py](schema.py)** — `setup_db()`: creates `embeddings` (id, model, path, label, embedding BLOB) and `predictions` (id, model, predicted_label) tables; enables WAL journal mode
 
 ### Database
 
-`embedding.db` (~416 MB, not in git) is the central store. Embeddings are stored as `struct.pack('512f', ...)` BLOBs and unpacked with `struct.unpack` on read. The `predictions` table is joined back to `embeddings` for evaluation.
+`embedding.db` (not in git) is the central store with WAL journaling. Both tables use a composite PK of `(id, model)` so multiple models coexist. Embeddings are stored as `struct.pack(f'{dim}f', ...)` BLOBs — dimension varies by model. The `predictions` table is joined back to `embeddings` for evaluation.
 
 ### Environment
 
@@ -47,9 +51,10 @@ The notebook is the authoritative ML workflow and runs top-to-bottom:
 
 ### Device detection
 
-The notebook auto-selects `cuda` → `mps` (Apple Silicon) → `cpu` for both the CLIP model and tensor operations.
+All notebooks auto-select `cuda` → `mps` (Apple Silicon) → `cpu`.
 
 ## References
 
 - [The Food-101 Data Set](https://data.vision.ee.ethz.ch/cvl/datasets_extra/food-101/)
 - [OpenAI CLIP](https://github.com/openai/CLIP)
+- [SigLIP 2](https://huggingface.co/google/siglip2-base-patch16-224)

@@ -10,8 +10,11 @@ Zero-shot classification on Food-101 (101,000 images, 101 classes) using cosine 
 | --- | --- | --- | --- |
 | CLIP ViT-B/32 | 77.9% | 73.1% | 96.4% |
 | SigLIP base-patch16-224 | 89.7% | 92.9% | 95.5% |
+| SigLIP2 base-patch16-224 | 90.0% | 95.5% | 92.5% |
+| SigLIP2 large-patch16-256 | — | — | — |
+| SigLIP2 so400m-patch14-384 | — | — | — |
 
-SigLIP improves overall accuracy by ~12 points and hot dog recall by ~20 points, with a small drop in precision.
+SigLIP and SigLIP2 both substantially outperform CLIP. SigLIP2 requires `"a photo of a {label}"` prompt templates for best results — bare label names degrade accuracy to ~47%. Results for the large and so400m SigLIP2 variants are pending.
 
 ## References
 
